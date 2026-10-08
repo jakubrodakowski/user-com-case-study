@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Case study by Jakub Rodakowski: User.com implementation for a WooCommerce store with Google Tag Manager tracking, automations and a Google Sheets webhook.">
+<title>User.com Implementation Case Study</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column (~720px) with wide figures; a pipeline strip near the top; debug log as a table. */
+:root{
+  --bg:#F4F6F9; --surface:#FFFFFF; --ink:#13202F; --muted:#556274; --line:#D9E0E8;
+  --navy:#1F3A5F; --teal:#0F7B6C; --teal-soft:#E3F2EF; --code-bg:#EEF2F6;
+  --display:"Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --body:"Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1720; --surface:#16212D; --ink:#E6ECF2; --muted:#9AA8B8; --line:#2A3846;
+  --navy:#9CC3F0; --teal:#4CC3AE; --teal-soft:#16332F; --code-bg:#1B2835; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F1720; --surface:#16212D; --ink:#E6ECF2; --muted:#9AA8B8; --line:#2A3846;
+  --navy:#9CC3F0; --teal:#4CC3AE; --teal-soft:#16332F; --code-bg:#1B2835; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.6;margin:0}
+.wrap{max-width:880px;margin:0 auto;padding-inline:20px;padding-block:48px 64px}
+.col{max-width:700px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;color:var(--ink)}
+h1{font-size:clamp(28px,5vw,42px);line-height:1.12;font-weight:700;letter-spacing:-0.01em}
+h2{font-size:24px;font-weight:700;margin-top:56px;margin-bottom:12px}
+h3{font-size:17px;font-weight:600;margin-top:24px;margin-bottom:6px}
+p{margin:0 0 12px}
+a{color:var(--teal)}
+a:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin-bottom:12px}
+.lead{font-size:18px;color:var(--muted);margin-top:14px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:20px;font-size:14px;color:var(--muted)}
+.meta b{color:var(--ink);font-weight:600}
+.note{margin-top:20px;padding:12px 16px;border-left:3px solid var(--teal);background:var(--teal-soft);font-size:14px;border-radius:0 6px 6px 0}
+.tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:20px}
+.tools span{font-family:var(--mono);font-size:12px;padding:4px 8px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--muted)}
+
+/* pipeline */
+.pipe{margin-top:40px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px}
+.pipe-title{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px}
+.steps{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px}
+.step{flex:1 1 140px;min-width:0;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--bg)}
+.step b{display:block;font-size:14px;color:var(--navy)}
+.step small{display:block;font-size:12.5px;color:var(--muted);line-height:1.4;margin-top:2px}
+.arrow{align-self:center;color:var(--teal);font-family:var(--mono);font-size:14px}
+@media (max-width:640px){.arrow{display:none}.step{flex-basis:100%}}
+
+/* deliverables */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;min-width:0}
+.card b{display:block;margin-bottom:4px}
+.card span{font-size:14px;color:var(--muted)}
+
+figure{margin:20px 0 8px}
+figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+figcaption{font-size:13.5px;color:var(--muted);margin-top:8px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:700px){.two{grid-template-columns:1fr}}
+
+pre{font-family:var(--mono);font-size:13px;line-height:1.55;background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:16px 0}
+code{font-family:var(--mono);font-size:.9em;background:var(--code-bg);padding:1px 5px;border-radius:4px}
+pre code{background:none;padding:0;font-size:inherit}
+.c{color:var(--muted)}
+
+.table-wrap{overflow-x:auto;margin-top:16px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px;border-bottom:1px solid var(--line)}
+th{font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+tr:last-child td{border-bottom:0}
+td:first-child{font-weight:600;width:24%}
+
+ul{padding-left:20px;margin:8px 0}
+li{margin-bottom:6px}
+footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px 24px}
+footer b{color:var(--ink)}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="col">
+    <div class="eyebrow">Case study · Jakub Rodakowski</div>
+    <h1>Tracking and marketing automation for a WooCommerce store, built on User.com</h1>
+    <p class="lead">A full SaaS implementation done solo in about a week: product-event tracking through Google Tag Manager, three automations, and a webhook integration with Google Sheets.</p>
+    <div class="meta">
+      <span><b>Context:</b> recruitment assignment for User.com (Positive Group)</span>
+      <span><b>When:</b> 2–9 June 2026</span>
+      <span><b>Role:</b> sole implementer</span>
+    </div>
+    <div class="note">This was a test environment provided for the assignment, not a live client. The setup was presented and defended live to the User.com team. Screenshots come from that instance; personal data, keys and the webhook address are blurred.</div>
+    <div class="tools">
+      <span>User.com</span><span>Google Tag Manager</span><span>WordPress</span><span>WooCommerce</span><span>JavaScript</span><span>REST API</span><span>Webhooks</span><span>Google Apps Script</span><span>Google Sheets</span><span>Chrome DevTools</span>
+    </div>
+  </header>
+
+  <section class="pipe" aria-label="How the data flows">
+    <div class="pipe-title">How the data flows</div>
+    <div class="steps">
+      <div class="step"><b>Product page</b><small>WooCommerce renders name, ID, price, image</small></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>GTM scrape tag</b><small>reads the DOM on DOM Ready, cleans the price</small></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>dataLayer</b><small>4 Data Layer Variables</small></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>User.com event</b><small><code>view</code> and <code>add to cart</code></small></div>
+      <div class="arrow">→</div>
+      <div class="step"><b>Automations</b><small>email, tag, webhook to Apps Script → Sheets</small></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What I built</h2>
+    <div class="grid">
+      <div class="card"><b>Tag management foundation</b><span>GTM installed via plugin; chat widget and tracking deployed as GTM tags, not hard-coded into the theme.</span></div>
+      <div class="card"><b>Product-event tracking</b><span>Product views and add-to-cart sent to User.com with name, ID, price and image URL.</span></div>
+      <div class="card"><b>Newsletter flow</b><span>Pop-up 10 seconds into a first visit, contact created on sign-up, thank-you email sent automatically.</span></div>
+      <div class="card"><b>Abandoned-cart recovery</b><span>Email that renders the exact product left in the cart, pulled from the contact's last event.</span></div>
+      <div class="card"><b>Sheets integration</b><span>Email opens and product views written to Google Sheets through a webhook and an Apps Script endpoint.</span></div>
+      <div class="card"><b>Own idea: interest signal</b><span>Contacts who view a product are tagged and flagged in the sheet, so sales can reach out before the cart stage.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. Tracking product events</h2>
+    <div class="col">
+      <p>WooCommerce did not expose product data in the data layer, so I read it from the page. A Custom HTML tag fires on DOM Ready on product URLs, takes the name, price, product ID and main image from the DOM, normalises the price (<code>99,99 zł</code> → <code>99.99</code>) and pushes a <code>product_view</code> event. A second tag sends it to User.com as a standard product event.</p>
+    </div>
+    <div class="two">
+      <figure>
+        <img src="img/console-scrape.jpg" alt="Chrome console showing the selectors returning the product name, prices, product ID 1157 and image URLs" loading="lazy">
+        <figcaption>Selectors tested in the console first: every field resolves before it goes into a tag.</figcaption>
+      </figure>
+      <figure>
+        <img src="img/gtm-datalayer.jpg" alt="Google Tag Assistant showing the data layer with product_id 1157, product_name, product_price 99.99 and product_image" loading="lazy">
+        <figcaption>Tag Assistant: the cleaned values in the data layer on a product page.</figcaption>
+      </figure>
+    </div>
+    <figure>
+      <img src="img/network-payload.jpg" alt="Network tab with the product_event request payload: product_id, event_type view, name, price, image_url" loading="lazy">
+      <figcaption>The request User.com receives: <code>event_type: "view"</code> with the product's ID, name, price and image.</figcaption>
+    </figure>
+<pre><code><span class="c">// User.com SDK loads asynchronously, so the tag retries instead of losing the event</span>
+var tries = 0;
+function fire() {
+  if (typeof userengage === 'function') {
+    userengage('product_event', data);
+  } else if (tries &lt; 20) {
+    tries++;
+    setTimeout(fire, 300);   <span class="c">// up to ~6 s</span>
+  }
+}
+fire();</code></pre>
+  </section>
+
+  <section>
+    <h2>2. Automations</h2>
+    <div class="col">
+      <p>The newsletter flow waits 10 seconds on a first visit, shows a pop-up and sends a thank-you email once the form is filled. The abandoned-cart flow starts on an <code>add to cart</code> event, waits, sends the recovery email, and on <em>Opened</em> calls my Apps Script endpoint so the open lands in Google Sheets.</p>
+    </div>
+    <figure>
+      <img src="img/flow-newsletter.jpg" alt="Automation: page visit, delay, show pop-up, with branches Shown and After submit" loading="lazy">
+      <figcaption>Newsletter: visit → 10 s delay → pop-up → thank-you email after sign-up.</figcaption>
+    </figure>
+    <figure>
+      <img src="img/flow-abandoned-cart.jpg" alt="Automation: product event trigger, delay, send email campaign, then API call on Opened" loading="lazy">
+      <figcaption>Abandoned cart: product event → delay → email → API call on open, with the webhook configuration on the right.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>3. The recovery email</h2>
+    <div class="col">
+      <p>The email uses User.com snippet tags to loop over the contact's most recent <code>add to cart</code> event and render that product's name, price and image, so each person sees what they actually left behind.</p>
+    </div>
+    <figure>
+      <img src="img/email-template.jpg" alt="Email editor with snippet tags product_events filtered to add to cart, rendering event.name and event.price" loading="lazy">
+      <figcaption>Template: <code>product_events … event_type='add to cart'</code> renders the last product.</figcaption>
+    </figure>
+    <figure>
+      <img src="img/email-received.jpg" alt="Received email Zapomniałeś o czymś? showing Testowy produkt 1 at 99.99 zł" loading="lazy">
+      <figcaption>Delivered: the right product and price. The broken image is explained in the debugging log below.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>4. Debugging log</h2>
+    <div class="col"><p>Most of the work was finding out why something that looked configured did not work. Each problem below was reproduced, traced to its cause and fixed or explained.</p></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>Chat widget not visible</td><td>Hidden in the widget's visibility settings in User.com</td><td>Changed the visibility rule; widget stays deployed through GTM</td></tr>
+          <tr><td>Newsletter sign-up created no contact</td><td>Form field was not mapped to the contact's email attribute</td><td>Rebuilt the pop-up with the field mapped to <code>email</code></td></tr>
+          <tr><td>Some product events never arrived</td><td>The tag fired before the asynchronous SDK had loaded</td><td>Retry loop: up to 20 attempts every 300 ms</td></tr>
+          <tr><td>Automation trigger ignored product views</td><td>I sent <code>'product view'</code>, which is not in User.com's event list</td><td>Switched to the standard <code>view</code> / <code>add to cart</code> names (Enhanced Ecommerce style)</td></tr>
+          <tr><td>Anonymous visitors saw nothing</td><td>WooCommerce site was in "coming soon" mode</td><td>Set site visibility to live</td></tr>
+          <tr><td>Email column empty in the sheet</td><td>Webhook payload is nested: contact under <code>user</code>, my fields under <code>extra</code></td><td>Script reads <code>user.email</code>, <code>extra.product</code>, <code>extra.event</code>; redeployed</td></tr>
+          <tr><td>Product image broken in the email</td><td>User.com rewrites the image host to its own domain on the test instance</td><td>Confirmed in the raw message source and data layer; environment limitation, works on a real domain</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="col">
+    <h2>What I would add in production</h2>
+    <ul>
+      <li>A secret token in the webhook, validated by the Apps Script endpoint.</li>
+      <li>Throttling on the interest signal, so a page refresh does not create a new alert.</li>
+      <li>Numeric lead scoring instead of a single tag, with an alert to sales above a threshold.</li>
+      <li>Product data from a native data layer instead of DOM scraping, which breaks when the theme changes.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <span><b>Jakub Rodakowski</b> · Warsaw</span>
+    <span>rodakowskikuba@gmail.com</span>
+    <a href="https://www.linkedin.com/in/jakub-rodakowski" target="_blank" rel="noopener">LinkedIn</a>
+  </footer>
+</div>
+
+</body>
+</html>
